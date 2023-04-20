@@ -13,12 +13,15 @@ using namespace sf;
 
 int main()
 {
+    srand(time(nullptr));
+
     // create the window for the game
     VideoMode vm(1920, 1080);
     RenderWindow window(vm, "Chaos Game", Style::Default);
 
+    // used for measuring deltaTime and fps
     Clock dtClock;
-    int nFrames = 0;
+    int totalFrames = 0;
     double totalTime = 0;
 
     // load the font used for all text
@@ -26,14 +29,18 @@ int main()
     fontLato.loadFromFile("fonts/Lato-Regular.ttf");
 
     // create the fps text
-    Text textFps;
-    textFps.setFont(fontLato);
-    textFps.setCharacterSize(12);
+    Text textInfo;
+    textInfo.setFont(fontLato);
+    textInfo.setCharacterSize(12);
 
+    // create the insturctions text
     constexpr const char *INSTRUCTIONS = "Welcome to Chaos Game!\nClick anywhere three times to define the triangle\nThen click one more to start!";
     CenteredText textInstruct(fontLato, INSTRUCTIONS, {window.getView().getCenter().x, 50.f}, false);
 
-    std::vector<Vector2f> points;
+    // vectors for points displayed on screen
+    std::vector<Vector2f> inputPoints;
+    std::vector<Vector2f> generated;
+    Vector2f lastGenerated;
 
     // MAIN GAME LOOP
     while (window.isOpen())
@@ -49,37 +56,71 @@ int main()
             // check for left mouse pressed
             if (ev.type == Event::MouseButtonPressed && ev.mouseButton.button == Mouse::Left)
             {
-                points.push_back({static_cast<float>(ev.mouseButton.x), static_cast<float>(ev.mouseButton.y)});
+                inputPoints.push_back({static_cast<float>(ev.mouseButton.x), static_cast<float>(ev.mouseButton.y)});
             }
         }
 
-        // found the avg fps and frame times for the last 100 frames
+        // found the avg fps and frame times for the last 100ms
         Time dt = dtClock.restart();
         totalTime += static_cast<double>(dt.asMicroseconds()) / 1000;
-        if (++nFrames % 200 == 0)
+        totalFrames++;
+        if (totalTime > 100.f) // update every 100ms
         {
-            double tMs = totalTime / 200; // avg frame time
-            totalTime = 0;                // reset the total time counter
-            double fps = 1000 / tMs;      // overall fps
+            double tMs = totalTime / totalFrames; // avg frame time
+            totalTime = 0;                        // reset counters
+            totalFrames = 0;
+            double fps = 1000 / tMs; // overall fps
 
             std::ostringstream oss;
-            oss << std::fixed << std::setprecision(1) << fps << "fps " << tMs << "ms";
-            textFps.setString(oss.str());
+            oss << std::fixed << std::setprecision(1) << fps << "fps " << tMs << "ms" << std::endl;
+            oss << generated.size() << " points";
+            textInfo.setString(oss.str());
         }
 
         // BEGIN DRAW
         window.clear();
-        window.draw(textFps);
+        window.draw(textInfo);
 
         // point.size() < 4 when awaiting user input
-        if (points.size() < 4) {
+        if (inputPoints.size() < 4)
+        {
             window.draw(textInstruct);
 
             // draw a small rect for each vert provided
             RectangleShape shape{{5, 5}};
-            for (auto const &vertex : points)
+            for (auto const &vertex : inputPoints)
             {
                 shape.setPosition(vertex);
+                window.draw(shape);
+            }
+        }
+        // we're no longer awaiting user input, generate points and dispaly!
+        else
+        {
+            constexpr int TARGET_PPS = 1000; // points per second
+            // calculate number of points to create to meet TARGET_PPS
+            int nPoints = TARGET_PPS * static_cast<double>(dt.asMicroseconds()) / 1000000;
+            if (generated.size() + nPoints >= 30000)
+                nPoints = 30000 - generated.size(); // cap at 30k generated points
+
+            for (int n = 0; n < nPoints; n++)
+            {
+                // set lastGenerated to the initial point if we don't have any points yet
+                if (generated.size() == 0)
+                    lastGenerated = inputPoints[inputPoints.size() - 1];
+
+                // randomly select the next point from the input points
+                Vector2f selectedPoint = inputPoints[rand() % (inputPoints.size() - 1)];
+                // create the new lastGenerated point
+                lastGenerated = (lastGenerated + selectedPoint) / 2.f;
+                generated.push_back(lastGenerated);
+            }
+
+            // draw all points
+            RectangleShape shape({1, 1});
+            for (size_t i = 0; i < generated.size(); i++)
+            {
+                shape.setPosition(generated[i]);
                 window.draw(shape);
             }
         }
